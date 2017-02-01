@@ -116,12 +116,33 @@ class wpsc_merchant_paytm extends wpsc_merchant
 		{			
 			if ($_POST["STATUS"] == "TXN_SUCCESS" && $_POST["RESPCODE"] == "01") 
 			{
-				//$this->set_purchase_processed_by_purchid(3);
-				$this->set_transaction_details($_POST['TXNID'], 3);
-		
-				//echo "OK - " . $_POST["TXNID"];
-				$this->go_to_transaction_results($_POST["MERC_UNQ_REF"]);
-				//exit();
+				// Create an array having all required parameters for status query.
+				$requestParamList = array("MID" => get_option('paytm_merchantid') , "ORDERID" => $this->purchase_id);
+				
+				// Call the PG's getTxnStatus() function for verifying the transaction status.
+				if(get_option('paytm_mode')=='0')
+				{
+					$check_status_url = 'https://pguat.paytm.com/oltp/HANDLER_INTERNAL/TXNSTATUS';
+				}
+				else
+				{
+					$check_status_url = 'https://secure.paytm.in/oltp/HANDLER_INTERNAL/TXNSTATUS';
+				}
+				$responseParamList = callAPI($check_status_url, $requestParamList);				
+				if($responseParamList['STATUS']=='TXN_SUCCESS' && $responseParamList['TXNAMOUNT']==$_POST["TXNAMOUNT"])
+				{
+					//$this->set_purchase_processed_by_purchid(3);
+					$this->set_transaction_details($_POST['TXNID'], 3);
+			
+					//echo "OK - " . $_POST["TXNID"];
+					$this->go_to_transaction_results($_POST["MERC_UNQ_REF"]);
+					//exit();
+				}
+				else{
+					echo "<b>Security Error. Illegal access detected. Checksum mismatched.</b>";	
+					$this->set_purchase_processed_by_purchid(6);
+					exit();
+				}
 			}
 			else 
 			{				
