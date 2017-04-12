@@ -119,16 +119,20 @@ class wpsc_merchant_paytm extends wpsc_merchant
 				// Create an array having all required parameters for status query.
 				$requestParamList = array("MID" => get_option('paytm_merchantid') , "ORDERID" => $this->purchase_id);
 				
+				$StatusCheckSum = getChecksumFromArray($requestParamList, get_option('paytm_merchantkey'));
+							
+				$requestParamList['CHECKSUMHASH'] = $StatusCheckSum;
+				
 				// Call the PG's getTxnStatus() function for verifying the transaction status.
 				if(get_option('paytm_mode')=='0')
 				{
-					$check_status_url = 'https://pguat.paytm.com/oltp/HANDLER_INTERNAL/TXNSTATUS';
+					$check_status_url = 'https://pguat.paytm.com/oltp/HANDLER_INTERNAL/getTxnStatus';
 				}
 				else
 				{
-					$check_status_url = 'https://secure.paytm.in/oltp/HANDLER_INTERNAL/TXNSTATUS';
+					$check_status_url = 'https://secure.paytm.in/oltp/HANDLER_INTERNAL/getTxnStatus';
 				}
-				$responseParamList = callAPI($check_status_url, $requestParamList);				
+				$responseParamList = callNewAPI($check_status_url, $requestParamList);				
 				if($responseParamList['STATUS']=='TXN_SUCCESS' && $responseParamList['TXNAMOUNT']==$_POST["TXNAMOUNT"])
 				{
 					//$this->set_purchase_processed_by_purchid(3);
