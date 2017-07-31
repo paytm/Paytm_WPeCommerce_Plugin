@@ -143,7 +143,7 @@ class wpsc_merchant_paytm extends wpsc_merchant
 					//exit();
 				}
 				else{
-					echo "<b>Security Error. Illegal access detected. Checksum mismatched.</b>";	
+					echo "<b>It seems some issue in server to server communication. Kindly connect with administrator.</b>";	
 					$this->set_purchase_processed_by_purchid(6);
 					exit();
 				}
