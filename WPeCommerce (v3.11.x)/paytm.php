@@ -71,14 +71,20 @@ class wpsc_merchant_paytm extends wpsc_merchant
 		
 		$paytm_args_array[] = "<input type='hidden' name='txnDate' value='". date('Y-m-d H:i:s') ."'/>";
 		$paytm_args_array[] = "<input type='hidden' name='CHECKSUMHASH' value='". $checksum ."'/>";
-		if(get_option('paytm_mode')=='0')
-		{
-			$gateway_url = 'https://pguat.paytm.com/oltp-web/processTransaction';
-		}
-		else
-		{
-			$gateway_url = 'https://secure.paytm.in/oltp-web/processTransaction';
-		}
+		/*	19751/17Jan2018	*/
+			/*if(get_option('paytm_mode')=='0') {
+				$gateway_url = 'https://pguat.paytm.com/oltp-web/processTransaction';
+			} else {
+				$gateway_url = 'https://secure.paytm.in/oltp-web/processTransaction';
+			}*/
+
+			/*if(get_option('paytm_mode')=='0') {
+				$gateway_url = 'https://securegw-stage.paytm.in/theia/processTransaction';
+			} else {
+				$gateway_url = 'https://securegw.paytm.in/theia/processTransaction';
+			}*/
+			$gateway_url = get_option('transact_url');
+		/*	19751/17Jan2018 end	*/
 		//status_header(302);
 		//wp_redirect("https://pguat.paytm.com/oltp-web/processTransaction" . implode("", array_values($paytm_args_array)));
 		//exit;
@@ -124,14 +130,20 @@ class wpsc_merchant_paytm extends wpsc_merchant
 				$requestParamList['CHECKSUMHASH'] = $StatusCheckSum;
 				
 				// Call the PG's getTxnStatus() function for verifying the transaction status.
-				if(get_option('paytm_mode')=='0')
-				{
-					$check_status_url = 'https://pguat.paytm.com/oltp/HANDLER_INTERNAL/getTxnStatus';
-				}
-				else
-				{
-					$check_status_url = 'https://secure.paytm.in/oltp/HANDLER_INTERNAL/getTxnStatus';
-				}
+				/*	19751/17Jan2018	*/
+					/*if(get_option('paytm_mode')=='0') {
+						$check_status_url = 'https://pguat.paytm.com/oltp/HANDLER_INTERNAL/getTxnStatus';
+					} else {
+						$check_status_url = 'https://secure.paytm.in/oltp/HANDLER_INTERNAL/getTxnStatus';
+					}*/
+
+					/*if(get_option('paytm_mode')=='0') {
+						$check_status_url = 'https://securegw-stage.paytm.in/merchant-status/getTxnStatus';
+					} else {
+						$check_status_url = 'https://securegw.paytm.in/merchant-status/getTxnStatus';
+					}*/
+					$check_status_url = get_option('transaction_status_url');
+				/*	19751/17Jan2018 end	*/
 				$responseParamList = callNewAPI($check_status_url, $requestParamList);				
 				if($responseParamList['STATUS']=='TXN_SUCCESS' && $responseParamList['TXNAMOUNT']==$_POST["TXNAMOUNT"])
 				{
@@ -183,10 +195,16 @@ function submit_paytm() {
 	if(isset($_POST['paytm_website']))
 		update_option('paytm_website', $_POST['paytm_website']);
 		
-	if(isset($_POST['paytm_mode']))
-		update_option('paytm_mode', $_POST['paytm_mode']);
+	/*if(isset($_POST['paytm_mode']))
+		update_option('paytm_mode', $_POST['paytm_mode']);*/
+
+	if(isset($_POST['transact_url']))
+		update_option('transact_url', $_POST['transact_url']);
+
+	if(isset($_POST['transact_status_url']))
+		update_option('transact_status_url', $_POST['transact_status_url']);
 	
-	if(isset($_POST['paytm_mode']))
+	if(isset($_POST['paytm_callback']))
 		update_option('paytm_callback', $_POST['paytm_callback']);
 		
 	return true;
@@ -237,11 +255,18 @@ function form_paytm() {
 		</tr>		
 			
 		<tr>
-		  <td>" . __('Enable Live Mode', 'wpsc' ) . "
+		  <td>" . __('Transaction URL', 'wpsc' ) . "
 		  </td>
 		  <td>
-  				<input type='radio' name='paytm_mode' value='1' ". (intval(get_option('paytm_mode')) == 1 ? "checked='checked'" : "") ." /> " . __('Yes', 'wpsc' ) . "
-				<input type='radio' name='paytm_mode' value='0' ". (intval(get_option('paytm_mode')) == 0 ? "checked='checked'" : "") ." /> " . __('No', 'wpsc' ) . "
+		  <input type='text' size='' value='".get_option('transaction_url')."' name='transaction_url' />
+		  </td>
+		</tr>
+
+		<tr>
+		  <td>" . __('Transaction Status URL', 'wpsc' ) . "
+		  </td>
+		  <td>
+		  <input type='text' size='' value='".get_option('transaction_status_url')."' name='transaction_status_url' />
 		  </td>
 		</tr>
 		
@@ -256,6 +281,15 @@ function form_paytm() {
 		
 		
 		";
+
+		/*<tr>
+		  <td>" . __('Enable Live Mode', 'wpsc' ) . "
+		  </td>
+		  <td>
+  				<input type='radio' name='paytm_mode' value='1' ". (intval(get_option('paytm_mode')) == 1 ? "checked='checked'" : "") ." /> " . __('Yes', 'wpsc' ) . "
+				<input type='radio' name='paytm_mode' value='0' ". (intval(get_option('paytm_mode')) == 0 ? "checked='checked'" : "") ." /> " . __('No', 'wpsc' ) . "
+		  </td>
+		</tr>*/
 
 
   	return $output;
