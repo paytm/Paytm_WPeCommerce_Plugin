@@ -10,7 +10,7 @@ The aim of this document is to explain the procedure of installation and configu
 Installation and Configuration
 
 - Unzip the Paytm module files
-- Copy the file "paytm.php" and "encdec_paytm.php" to your WordPress installation in this folder: /wp-content/plugins/wp-e-commerce/wpsc-merchants/
+- Copy the file "paytm.php", "encdec_paytm.php", and "paytm_version.txt" to your WordPress installation in this folder: /wp-content/plugins/wp-e-commerce/wpsc-merchants/
 - Log in to your WordPress administration
 - Go to Settings -> Store
 - Choose Payments at the top of the screen, and tick off Paytm. Press "Update" to save the settings.
