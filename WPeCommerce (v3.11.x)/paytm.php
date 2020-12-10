@@ -8,7 +8,7 @@
   * This is the gateway variable $nzshpcrt_gateways, it is used for displaying gateway information on the wp-admin pages and also
   * for internal operations.
   */
-include_once('paytm/encdec_paytm.php');
+include_once('paytm/PaytmChecksum.php');
 $nzshpcrt_gateways[$num] = array(
 	'name' 					=>  __( 'Paytm Payment Solutions', 'wpsc' ),
 	'api_version' 			=> 2.0,
@@ -33,16 +33,24 @@ class wpsc_merchant_paytm extends wpsc_merchant
 	function submit()
 	{		
 		$parameters = array();
-		$paytm_transact_url = get_option('paytm_transact_url');
+		//$paytm_transact_url = get_option('paytm_transact_url');
 
 		// $this->purchase_id = "TEST_".strtotime("now")."_ORDERID-".$this->purchase_id; // just for testing
 
+		if(get_option('paytm_environment')=='staging'){
+        $paytmurl = 'https://securegw-stage.paytm.in/';
+        $paytminiturl = $paytmurl . 'theia/api/v1/initiateTransaction?mid=';
+		}else{
+        $paytmurl = 'https://securegw.paytm.in/';
+        $paytminiturl = $paytmurl . 'theia/api/v1/initiateTransaction?mid=';
+		}
+	    // payload //
 		$post_variables = array(
 							"MID" 				=> get_option('paytm_merchantid'),
-							"ORDER_ID" 			=> $this->purchase_id,
+							"ORDER_ID" 			=> $this->purchase_id.time(),
 							"CUST_ID" 			=> $this->cart_data['email_address'],
 							"TXN_AMOUNT" 		=> $this->cart_data["total_price"],
-							"CHANNEL_ID" 		=> get_option('paytm_channelid'),
+							//"CHANNEL_ID" 		=> get_option('paytm_channelid'),
 							"INDUSTRY_TYPE_ID" 	=> get_option('paytm_industrytype'),
 							"WEBSITE" 			=> get_option('paytm_website'),	
 							"MERC_UNQ_REF" 		=> $this->cart_data["session_id"],
@@ -50,29 +58,134 @@ class wpsc_merchant_paytm extends wpsc_merchant
 						);
 
 		$secret_key 	= get_option('paytm_merchantkey');
-		$checksum 		= PaytmPayment::getChecksumFromArray($post_variables, $secret_key);
-					
-		$paytm_args_html = '';
 
-		foreach ($post_variables as $post_key =>  $post_value) {
-			$paytm_args_html .= "<input type='hidden' name='".$post_key."' value='". $post_value ."'/>";
-		}
+
+		$paytmParams["body"] = array(
+            "requestType" => "Payment",
+            "mid" => $post_variables["MID"],
+            "websiteName" => $post_variables["WEBSITE"],
+            "orderId" => $post_variables["ORDER_ID"],
+            "callbackUrl" => $post_variables["CALLBACK_URL"],
+            "txnAmount" => array(
+                "value" => $post_variables["TXN_AMOUNT"],
+                "currency" => "INR",
+            ),
+            "userInfo" => array(
+                "custId" => $post_variables["CUST_ID"],
+            ),
+            "extendInfo" => array(
+                        "mercUnqRef" => $post_variables["MERC_UNQ_REF"],
+            ),
+        );
+
+
+		 $generateSignature = PaytmChecksum::generateSignature(json_encode($paytmParams['body'], JSON_UNESCAPED_SLASHES), $secret_key);
+
+        $paytmParams["head"] = array(
+            "signature" => $generateSignature
+        );
+
+
+        $url = $paytminiturl . $post_variables["MID"] . "&orderId=" . $post_variables["ORDER_ID"];
+        $post_data_string = json_encode($paytmParams, JSON_UNESCAPED_SLASHES);
+        $headers = array("Content-Type: application/json");
+
+        $ch = curl_init($url);
+        curl_setopt($ch, CURLOPT_POST, 1);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, $post_data_string);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, array("Content-Type: application/json"));
+        $response = curl_exec($ch);
+      //echo $response;
+        $response_array = json_decode($response, TRUE);
+        $txnToken = $response_array['body']['txnToken'];
+        $post_variables['TXN_TOKEN'] = $txnToken;
+
+
+        get_header();
+        echo '<div id="paytm-pg-spinner" class="paytm-pg-loader"><div class="bounce1"></div><div class="bounce2"></div><div class="bounce3"></div><div class="bounce4"></div><div class="bounce5"></div></div><div class="paytm-overlay paytm-pg-loader"></div>';
+
+		echo '<script type="application/javascript" crossorigin="anonymous" src="'.$paytmurl.'/merchantpgpui/checkoutjs/merchants/'.$post_variables['MID'].'.js"></script>
+			<div style="margin: 10% 28%;" >
+            <input type="button" class="button-alt" id="submit_paytm_payment_form" onClick="openJsCheckout();"  value="'.__('Pay via paytm').'" /> 
+            <a class="button cancel" href="'.get_option('shopping_cart_url').'">'.__('Cancel order & restore cart').'</a>
+			</div>	
+			        <style type="text/css">
+            #paytm-pg-spinner {margin: 0% auto 0;width: 70px;text-align: center;z-index: 999999;position: relative;display: none}
+
+            #paytm-pg-spinner > div {width: 10px;height: 10px;background-color: #012b71;border-radius: 100%;display: inline-block;-webkit-animation: sk-bouncedelay 1.4s infinite ease-in-out both;animation: sk-bouncedelay 1.4s infinite ease-in-out both;}
+
+            #paytm-pg-spinner .bounce1 {-webkit-animation-delay: -0.64s;animation-delay: -0.64s;}
+
+            #paytm-pg-spinner .bounce2 {-webkit-animation-delay: -0.48s;animation-delay: -0.48s;}
+            #paytm-pg-spinner .bounce3 {-webkit-animation-delay: -0.32s;animation-delay: -0.32s;}
+
+            #paytm-pg-spinner .bounce4 {-webkit-animation-delay: -0.16s;animation-delay: -0.16s;}
+            #paytm-pg-spinner .bounce4, #paytm-pg-spinner .bounce5{background-color: #48baf5;} 
+            @-webkit-keyframes sk-bouncedelay {0%, 80%, 100% { -webkit-transform: scale(0) }40% { -webkit-transform: scale(1.0) }}
+
+            @keyframes sk-bouncedelay { 0%, 80%, 100% { -webkit-transform: scale(0);transform: scale(0); } 40% { 
+                                            -webkit-transform: scale(1.0); transform: scale(1.0);}}
+            .paytm-overlay{width: 100%;position: fixed;top: 0px;opacity: .4;height: 100%;background: #000;display: none;z-index: 99999999;}
+
+        </style>	
+
 		
-		$paytm_args_html .= "<input type='hidden' name='CHECKSUMHASH' value='". $checksum ."'/>";
+						<script type="text/javascript">
+							 
+						jQuery(".paytm-overlay").css("display","block");
+						jQuery("#paytm-pg-spinner").css("display","block");
 
+					  function openJsCheckout(){
+			           var config = {
+                        "root": "",
+                        "flow": "DEFAULT",
+                        "data": {
+                            "orderId": "'.$post_variables['ORDER_ID'].'",
+                            "token": "'.$post_variables['TXN_TOKEN'].'",
+                            "tokenType": "TXN_TOKEN",
+                            "amount": "'.$post_variables['TXN_AMOUNT'].'"
+                        },
+                        "merchant": {
+                            "redirect": true
+                        },
+                        "handler": {
+                            
+                            "notifyMerchant": function (eventName, data) {
+                                //console.log("notifyMerchant handler function called");
+                                //console.log("eventName => ",eventName);
+                                //console.log("data => ",data);
+                                location.reload();
+                            }
+                        }
+                    };
+                    if (window.Paytm && window.Paytm.CheckoutJS) {
+                        // initialze configuration using init method 
+                        window.Paytm.CheckoutJS.init(config).then(function onSuccess() {
+                            // after successfully updating configuration, invoke checkoutjs
+                            window.Paytm.CheckoutJS.invoke();
 
-		echo '<center><h1>Please do not refresh this page...</h1></center><form action="'.$paytm_transact_url.'" method="post" id="paytm_payment_form" name="f1" style="display:none;">
-						' . $paytm_args_html . '
-						<input type="submit" class="button-alt" id="submit_paytm_payment_form" value="'.__('Pay via paytm').'" /> <a class="button cancel" href="'.get_option('shopping_cart_url').'">'.__('Cancel order & restore cart').'</a>
-						
-							<script type="text/javascript">
-								document.f1.submit();
+                        jQuery(".paytm-overlay").css("display","none");
+						jQuery("#paytm-pg-spinner").css("display","none");
+
+                        }).catch(function onError(error) {
+                            console.log("error => ", error);
+                        });
+                    }
+
+							}
+
+				
+				setTimeout(function(){openJsCheckout()},4000);
+					 
 							</script>
-						</form>';
+						';
+						get_footer();
 						exit;
 	}
 	
 	function parse_gateway_notification() {
+		ob_start();
 		global $wpdb;
 		
 		//echo "<pre>"; print_r($this->cart_data);print_r($_GET);print_r($this); print_r($_POST); die;
@@ -84,17 +197,29 @@ class wpsc_merchant_paytm extends wpsc_merchant
 		$paytmChecksum 		= "";
 		$paramList 			= array();
 		$isValidChecksum 	= "FALSE";
-		$transact_url 		= get_option('paytm_transact_url');
+		//$transact_url 		= get_option('paytm_transact_url');
 		//$accepturl = $transact_url.$separator."sessionid=".$_POST["MERC_UNQ_REF"]."&gateway=paytm";
 
 		$paramList 			= array_map('sanitize_text_field', $_POST);
 		$paytmChecksum 		= isset($_POST["CHECKSUMHASH"]) ? sanitize_text_field($_POST["CHECKSUMHASH"]) : ""; 
 		
 		$secret_key 		= get_option('paytm_merchantkey');
-		
-		$isValidChecksum 	= PaytmPayment::verifychecksum_e($paramList, $secret_key, $paytmChecksum); 
+		if(get_option('paytm_environment')=='staging'){
+        $PAYTM_DOMAIN_THEIA = 'https://securegw-stage.paytm.in/';
+        }else{
+        
+        $PAYTM_DOMAIN_THEIA = 'https://securegw.paytm.in/';
 
-		if($isValidChecksum == "TRUE") 
+        }
+		
+		//$isValidChecksum 	= PaytmPayment::verifychecksum_e($paramList, $secret_key, $paytmChecksum); 
+		$isValidChecksum = PaytmChecksum::verifySignature($paramList, $secret_key, $paytmChecksum);
+
+
+
+
+
+		if($isValidChecksum == "TRUE" || $isValidChecksum == "true" || $isValidChecksum == "1") 
 		{			
 			if (sanitize_text_field($_POST["STATUS"]) == "TXN_SUCCESS" && sanitize_text_field($_POST["RESPCODE"]) == "01") 
 			{
@@ -102,21 +227,45 @@ class wpsc_merchant_paytm extends wpsc_merchant
 				$requestParamList = array("MID" => get_option('paytm_merchantid') , "ORDERID" => $this->purchase_id);
 
 				// $requestParamList["ORDERID"] = $_POST["ORDERID"]; // just for testing
-				
-				$StatusCheckSum = PaytmPayment::getChecksumFromArray($requestParamList, get_option('paytm_merchantkey'));
-							
-				$requestParamList['CHECKSUMHASH'] = $StatusCheckSum;
-				
-				$check_status_url = get_option('paytm_transact_status_url');
-				$responseParamList = PaytmPayment::callNewAPI($check_status_url, $requestParamList);				
-				if($responseParamList['STATUS']=='TXN_SUCCESS' && $responseParamList['TXNAMOUNT']==sanitize_text_field($_POST["TXNAMOUNT"]))
-				{
+
+				$paytmParamsStatus = array();
+                /* body parameters */
+                $paytmParamsStatus["body"] = array(
+                    /* Find your MID in your Paytm Dashboard at https://dashboard.paytm.com/next/apikeys */
+                    "mid" => get_option('paytm_merchantid'),
+                    /* Enter your order id which needs to be check status for */
+                    "orderId" => $_POST['ORDERID'],
+                );
+                $checksumStatus = PaytmChecksum::generateSignature(json_encode($paytmParamsStatus["body"], JSON_UNESCAPED_SLASHES), $secret_key);
+
+                /* head parameters */
+                $paytmParamsStatus["head"] = array(
+                    /* put generated checksum value here */
+                    "signature" => $checksumStatus
+                );
+
+
+
+                 /* prepare JSON string for request */
+                $post_data_status = json_encode($paytmParamsStatus, JSON_UNESCAPED_SLASHES);
+                $paytstsusmurl = $PAYTM_DOMAIN_THEIA . 'v3/order/status';
+                //$StatusCheckSum = getChecksumFromArray($requestParamList, $this->config->get('paytm_payments_merchant_key'));
+             //   $requestParamList['CHECKSUMHASH'] = $StatusCheckSum;
+                $ch = curl_init($paytstsusmurl);
+                curl_setopt($ch, CURLOPT_POST, 1);
+                curl_setopt($ch, CURLOPT_POSTFIELDS, $post_data_status);
+                curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+                curl_setopt($ch, CURLOPT_HTTPHEADER, array('Content-Type: application/json'));
+                $responseJson = curl_exec($ch);
+                $responseStatusArray = json_decode($responseJson, true);
+ 
+
+
+				if ($responseStatusArray['body']['resultInfo']['resultStatus'] == 'TXN_SUCCESS' && $responseStatusArray['body']['txnAmount'] == sanitize_text_field($_POST["TXNAMOUNT"])) {
 					//$this->set_purchase_processed_by_purchid(3);
+					//echo $_POST['TXNID'];exit;
 					$this->set_transaction_details(sanitize_text_field($_POST['TXNID']), 3);
-			
-					//echo "OK - " . $_POST["TXNID"];
 					$this->go_to_transaction_results(sanitize_text_field($_POST["MERC_UNQ_REF"]));
-					//exit();
 				}
 				else{
 					$this->set_purchase_processed_by_purchid(6);
@@ -176,23 +325,18 @@ function submit_paytm() {
 	if(isset($_POST['paytm_industrytype']))
 		update_option('paytm_industrytype', sanitize_text_field($_POST['paytm_industrytype']));
 		
-	if(isset($_POST['paytm_channelid']))
-		update_option('paytm_channelid', sanitize_text_field($_POST['paytm_channelid']));
-		
+	
 	if(isset($_POST['paytm_website']))
 		update_option('paytm_website', sanitize_text_field($_POST['paytm_website']));
 
-	if(isset($_POST['paytm_transact_url']))
-		update_option('paytm_transact_url', esc_url_raw($_POST['paytm_transact_url']));
-
-	if(isset($_POST['paytm_transact_status_url']))
-		update_option('paytm_transact_status_url', esc_url_raw($_POST['paytm_transact_status_url']));
-	
 	if(isset($_POST['paytm_callback']))
 		update_option('paytm_callback', sanitize_text_field($_POST['paytm_callback']));
 		
 	if(isset($_POST['paytm_callback_url']))
 		update_option('paytm_callback_url', esc_url_raw($_POST['paytm_callback_url']));
+
+	if(isset($_POST['paytm_environment']))
+		update_option('paytm_environment', sanitize_text_field($_POST['paytm_environment']));
 		
 	return true;
 }
@@ -201,6 +345,21 @@ function form_paytm() {
 	global $wpdb, $wpsc_gateways;
 
 	$output = "
+
+		<tr>
+		  <td>" . __('Environment', 'wpsc' ) . "
+		  </td>
+		  <td>
+
+		  	<select name='paytm_environment'>
+		  	<option value='staging' ". (get_option('paytm_environment') == 'staging' ? "selected='selected'" : "") .">" . __('Staging', 'wpsc' ) . "</option>
+		  	<option value='live' ". (get_option('paytm_environment') == 'live' ? "selected='selected'" : "") .">" . __('Live', 'wpsc' ) . "</option>
+
+		  	</select>
+		  </td>
+		</tr>
+
+
 		<tr>
 		  <td>" . __('Merchant Key', 'wpsc' ) . "
 		  </td>
@@ -225,13 +384,7 @@ function form_paytm() {
 		  </td>
 		</tr>
 		
-		<tr>
-		  <td>" . __('Channel ID', 'wpsc' ) . "
-		  </td>
-		  <td>
-		  <input type='text' size='' value='".get_option('paytm_channelid')."' name='paytm_channelid' />
-		  </td>
-		</tr>
+		 
 
 		<tr>
 		  <td>" . __('Website', 'wpsc' ) . "
@@ -240,23 +393,7 @@ function form_paytm() {
 		  <input type='text' size='40' value='".get_option('paytm_website')."' name='paytm_website' />
 		  </td>
 		</tr>		
-			
-		<tr>
-		  <td>" . __('Transaction URL', 'wpsc' ) . "
-		  </td>
-		  <td>
-		  <input type='text' size='' value='".get_option('paytm_transact_url')."' name='paytm_transact_url' />
-		  </td>
-		</tr>
-
-		<tr>
-		  <td>" . __('Transaction Status URL', 'wpsc' ) . "
-		  </td>
-		  <td>
-		  <input type='text' size='' value='".get_option('paytm_transact_status_url')."' name='paytm_transact_status_url' />
-		  </td>
-		</tr>
-		
+					
 		<tr>
 		  <td>" . __('Enable Callback URL', 'wpsc' ) . "
 		  </td>
