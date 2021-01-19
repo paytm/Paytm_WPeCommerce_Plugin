@@ -9,6 +9,8 @@
   * for internal operations.
   */
 include_once('paytm/PaytmChecksum.php');
+include_once('paytm/PaytmHelper.php');
+
 $nzshpcrt_gateways[$num] = array(
 	'name' 					=>  __( 'Paytm Payment Solutions', 'wpsc' ),
 	'api_version' 			=> 2.0,
@@ -33,21 +35,17 @@ class wpsc_merchant_paytm extends wpsc_merchant
 	function submit()
 	{		
 		$parameters = array();
-		//$paytm_transact_url = get_option('paytm_transact_url');
-
-		// $this->purchase_id = "TEST_".strtotime("now")."_ORDERID-".$this->purchase_id; // just for testing
-
 		if(get_option('paytm_environment')=='staging'){
-        $paytmurl = 'https://securegw-stage.paytm.in/';
-        $paytminiturl = $paytmurl . 'theia/api/v1/initiateTransaction?mid=';
+        $paytmurl     = PaytmConstants::STAGING_HOST;
+        $paytminiturl = $paytmurl.PaytmConstants::TRANSACTION_INIT_URL;
 		}else{
-        $paytmurl = 'https://securegw.paytm.in/';
-        $paytminiturl = $paytmurl . 'theia/api/v1/initiateTransaction?mid=';
+        $paytmurl     = PaytmConstants::PRODUCTION_HOST;  
+        $paytminiturl = $paytmurl.PaytmConstants::TRANSACTION_INIT_URL;
 		}
 	    // payload //
 		$post_variables = array(
 							"MID" 				=> get_option('paytm_merchantid'),
-							"ORDER_ID" 			=> $this->purchase_id.time(),
+							"ORDER_ID" 			=> PaytmHelper::getPaytmOrderId($this->purchase_id),
 							"CUST_ID" 			=> $this->cart_data['email_address'],
 							"TXN_AMOUNT" 		=> $this->cart_data["total_price"],
 							//"CHANNEL_ID" 		=> get_option('paytm_channelid'),
@@ -58,8 +56,6 @@ class wpsc_merchant_paytm extends wpsc_merchant
 						);
 
 		$secret_key 	= get_option('paytm_merchantkey');
-
-
 		$paytmParams["body"] = array(
             "requestType" => "Payment",
             "mid" => $post_variables["MID"],
@@ -78,30 +74,23 @@ class wpsc_merchant_paytm extends wpsc_merchant
             ),
         );
 
-
-		 $generateSignature = PaytmChecksum::generateSignature(json_encode($paytmParams['body'], JSON_UNESCAPED_SLASHES), $secret_key);
-
+		$generateSignature = PaytmChecksum::generateSignature(json_encode($paytmParams['body'], JSON_UNESCAPED_SLASHES), $secret_key);
         $paytmParams["head"] = array(
             "signature" => $generateSignature
         );
-
-
-        $url = $paytminiturl . $post_variables["MID"] . "&orderId=" . $post_variables["ORDER_ID"];
+        $apiURL = $paytminiturl . $post_variables["MID"] . "&orderId=" . $post_variables["ORDER_ID"];
         $post_data_string = json_encode($paytmParams, JSON_UNESCAPED_SLASHES);
-        $headers = array("Content-Type: application/json");
+        $response_array = PaytmHelper::executecUrl($apiURL, $post_data_string);
+        if(!empty($response_array['body']['txnToken'])){
+        	  $post_variables['TXN_TOKEN'] = $response_array['body']['txnToken'];
+        	  $post_variables['PAYTMMSG'] = PaytmConstants::TNX_TOKEN_GENERATED;
+        }else{
+        	  $post_variables['TXN_TOKEN'] = '';
+        	  $post_variables['PAYTMMSG'] = PaytmConstants::RESPONSE_ERROR;
+        	  $message = 'Error! ' . sanitize_text_field($post_variables["PAYTMMSG"]);
+			  redirect_checkout_page($message);
 
-        $ch = curl_init($url);
-        curl_setopt($ch, CURLOPT_POST, 1);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, $post_data_string);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_HTTPHEADER, array("Content-Type: application/json"));
-        $response = curl_exec($ch);
-      //echo $response;
-        $response_array = json_decode($response, TRUE);
-        $txnToken = $response_array['body']['txnToken'];
-        $post_variables['TXN_TOKEN'] = $txnToken;
-
-
+        }
         get_header();
         echo '<div id="paytm-pg-spinner" class="paytm-pg-loader"><div class="bounce1"></div><div class="bounce2"></div><div class="bounce3"></div><div class="bounce4"></div><div class="bounce5"></div></div><div class="paytm-overlay paytm-pg-loader"></div>';
 
@@ -129,14 +118,10 @@ class wpsc_merchant_paytm extends wpsc_merchant
             .paytm-overlay{width: 100%;position: fixed;top: 0px;opacity: .4;height: 100%;background: #000;display: none;z-index: 99999999;}
 
         </style>	
-
-		
-						<script type="text/javascript">
-							 
-						jQuery(".paytm-overlay").css("display","block");
-						jQuery("#paytm-pg-spinner").css("display","block");
-
-					  function openJsCheckout(){
+					<script type="text/javascript">		 
+					jQuery(".paytm-overlay").css("display","block");
+					jQuery("#paytm-pg-spinner").css("display","block");
+					function openJsCheckout(){
 			           var config = {
                         "root": "",
                         "flow": "DEFAULT",
@@ -150,7 +135,6 @@ class wpsc_merchant_paytm extends wpsc_merchant
                             "redirect": true
                         },
                         "handler": {
-                            
                             "notifyMerchant": function (eventName, data) {
                                 //console.log("notifyMerchant handler function called");
                                 //console.log("eventName => ",eventName);
@@ -173,84 +157,49 @@ class wpsc_merchant_paytm extends wpsc_merchant
                         });
                     }
 
-							}
-
-				
-				setTimeout(function(){openJsCheckout()},4000);
-					 
-							</script>
-						';
-						get_footer();
-						exit;
+					}
+				setTimeout(function(){openJsCheckout()},3000);	 
+				</script>';
+				get_footer();
+				exit;
 	}
 	
 	function parse_gateway_notification() {
 		ob_start();
 		global $wpdb;
-		
-		//echo "<pre>"; print_r($this->cart_data);print_r($_GET);print_r($this); print_r($_POST); die;
-		//$transact_url = get_option('transact_url');
-		$this->purchase_id 	= sanitize_text_field($_POST['ORDERID']);
-
-		// $this->purchase_id = substr($this->purchase_id, strpos($this->purchase_id, "-") + 1); // just for testing	
-
+		$this->purchase_id 	= PaytmHelper::getOrderId(sanitize_text_field($_POST['ORDERID']));
 		$paytmChecksum 		= "";
 		$paramList 			= array();
 		$isValidChecksum 	= "FALSE";
-		//$transact_url 		= get_option('paytm_transact_url');
-		//$accepturl = $transact_url.$separator."sessionid=".$_POST["MERC_UNQ_REF"]."&gateway=paytm";
-
 		$paramList 			= array_map('sanitize_text_field', $_POST);
 		$paytmChecksum 		= isset($_POST["CHECKSUMHASH"]) ? sanitize_text_field($_POST["CHECKSUMHASH"]) : ""; 
-		
 		$secret_key 		= get_option('paytm_merchantkey');
 		if(get_option('paytm_environment')=='staging'){
-        $PAYTM_DOMAIN_THEIA = 'https://securegw-stage.paytm.in/';
+        $PAYTM_DOMAIN = PaytmConstants::STAGING_HOST;
         }else{
-        
-        $PAYTM_DOMAIN_THEIA = 'https://securegw.paytm.in/';
-
+        $PAYTM_DOMAIN = PaytmConstants::PRODUCTION_HOST;
         }
 		
-		//$isValidChecksum 	= PaytmPayment::verifychecksum_e($paramList, $secret_key, $paytmChecksum); 
 		$isValidChecksum = PaytmChecksum::verifySignature($paramList, $secret_key, $paytmChecksum);
-
-
-
-
-
 		if($isValidChecksum == "TRUE" || $isValidChecksum == "true" || $isValidChecksum == "1") 
 		{			
 			if (sanitize_text_field($_POST["STATUS"]) == "TXN_SUCCESS" && sanitize_text_field($_POST["RESPCODE"]) == "01") 
 			{
 				// Create an array having all required parameters for status query.
 				$requestParamList = array("MID" => get_option('paytm_merchantid') , "ORDERID" => $this->purchase_id);
-
-				// $requestParamList["ORDERID"] = $_POST["ORDERID"]; // just for testing
-
 				$paytmParamsStatus = array();
-                /* body parameters */
                 $paytmParamsStatus["body"] = array(
-                    /* Find your MID in your Paytm Dashboard at https://dashboard.paytm.com/next/apikeys */
                     "mid" => get_option('paytm_merchantid'),
-                    /* Enter your order id which needs to be check status for */
                     "orderId" => $_POST['ORDERID'],
                 );
                 $checksumStatus = PaytmChecksum::generateSignature(json_encode($paytmParamsStatus["body"], JSON_UNESCAPED_SLASHES), $secret_key);
-
                 /* head parameters */
                 $paytmParamsStatus["head"] = array(
-                    /* put generated checksum value here */
                     "signature" => $checksumStatus
                 );
-
-
-
                  /* prepare JSON string for request */
                 $post_data_status = json_encode($paytmParamsStatus, JSON_UNESCAPED_SLASHES);
-                $paytstsusmurl = $PAYTM_DOMAIN_THEIA . 'v3/order/status';
-                //$StatusCheckSum = getChecksumFromArray($requestParamList, $this->config->get('paytm_payments_merchant_key'));
-             //   $requestParamList['CHECKSUMHASH'] = $StatusCheckSum;
+                $paytstsusmurl = $PAYTM_DOMAIN. 'v3/order/status';
                 $ch = curl_init($paytstsusmurl);
                 curl_setopt($ch, CURLOPT_POST, 1);
                 curl_setopt($ch, CURLOPT_POSTFIELDS, $post_data_status);
@@ -258,18 +207,12 @@ class wpsc_merchant_paytm extends wpsc_merchant
                 curl_setopt($ch, CURLOPT_HTTPHEADER, array('Content-Type: application/json'));
                 $responseJson = curl_exec($ch);
                 $responseStatusArray = json_decode($responseJson, true);
- 
-
-
 				if ($responseStatusArray['body']['resultInfo']['resultStatus'] == 'TXN_SUCCESS' && $responseStatusArray['body']['txnAmount'] == sanitize_text_field($_POST["TXNAMOUNT"])) {
-					//$this->set_purchase_processed_by_purchid(3);
-					//echo $_POST['TXNID'];exit;
 					$this->set_transaction_details(sanitize_text_field($_POST['TXNID']), 3);
 					$this->go_to_transaction_results(sanitize_text_field($_POST["MERC_UNQ_REF"]));
 				}
 				else{
 					$this->set_purchase_processed_by_purchid(6);
-
 					$message = 'It seems some issue in server to server communication. Kindly connect with administrator.';
 					redirect_checkout_page($message);
 				}
@@ -277,7 +220,6 @@ class wpsc_merchant_paytm extends wpsc_merchant
 			else 
 			{				
 				$this->set_purchase_processed_by_purchid(6);
-
 				$message = 'Oops! Your transaction get failed due to ' . sanitize_text_field($_POST["RESPMSG"]);
 				redirect_checkout_page($message);
 			}
