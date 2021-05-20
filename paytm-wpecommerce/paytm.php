@@ -21,7 +21,8 @@ $nzshpcrt_gateways[$num] = array(
 	'internalname' 			=> 'wpsc_merchant_paytm',
 	'form' 					=> 'form_paytm',
 	'submit_function' 		=> 'submit_paytm',
-	'payment_type' 			=> 'paytm'
+	'payment_type' 			=> 'paytm',
+	'image' => WPSC_URL . '/wpsc-merchants/paytm/images/paytm_logo.png',
 );
 
 
@@ -134,6 +135,10 @@ class wpsc_merchant_paytm extends wpsc_merchant
                         "merchant": {
                             "redirect": true
                         },
+                        "integration": {
+						"platform": "WPeCommerce",
+						"version": "'.WPSC_VERSION.'|'.PaytmConstants::PLUGIN_VERSION.'"
+						},
                         "handler": {
                             "notifyMerchant": function (eventName, data) {
                                 //console.log("notifyMerchant handler function called");
