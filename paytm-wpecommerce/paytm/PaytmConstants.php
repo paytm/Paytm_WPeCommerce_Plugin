@@ -3,8 +3,8 @@
 class PaytmConstants{
 	CONST TRANSACTION_INIT_URL          		= "theia/api/v1/initiateTransaction?mid=";
 
-	CONST PRODUCTION_HOST						= "https://securegw.paytm.in/";
-	CONST STAGING_HOST							= "https://securegw-stage.paytm.in/";
+	CONST PRODUCTION_HOST						= "https://secure.paytmpayments.com/";
+	CONST STAGING_HOST							= "https://securestage.paytmpayments.com/";
 
 	CONST ORDER_PROCESS_URL						= "order/process";
 	CONST ORDER_STATUS_URL						= "v3/order/status";
@@ -20,8 +20,8 @@ class PaytmConstants{
 	CONST CONNECT_TIMEOUT						= 10;
 	CONST TIMEOUT								= 10;
 
-	CONST LAST_UPDATED							= "20230830";
-	CONST PLUGIN_VERSION						= "3.1";
+	CONST LAST_UPDATED							= "20241023";
+	CONST PLUGIN_VERSION						= "3.2";
 
 	CONST CUSTOM_CALLBACK_URL					= "";
 
